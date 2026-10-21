@@ -202,6 +202,7 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.workmanager)
     implementation(libs.kermit)
+    implementation(libs.onnxruntime.android)
     implementation(libs.commons.compress)
     implementation(libs.kotlinx.serialization.json)
 
