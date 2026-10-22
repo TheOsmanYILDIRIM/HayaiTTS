@@ -127,6 +127,11 @@ android {
     // Kotlin Gradle Plugin compilerOptions DSL at the top of the file.
 
     packaging {
+        jniLibs {
+            // Experimental only: sherpa-onnx AAR and ORT Android both bundle this SONAME.
+            // Compile unblocker; runtime ABI/version compatibility remains unverified.
+            pickFirsts += "**/libonnxruntime.so"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
