@@ -37,10 +37,16 @@ internal class AntaliaOnnxEngine(
         OnnxTensor.createTensor(environment, LongBuffer.wrap(ids), longArrayOf(1, ids.size.toLong())).use { tokenTensor ->
             OnnxTensor.createTensor(environment, java.nio.ByteBuffer.wrap(mask), longArrayOf(1, ids.size.toLong()), ai.onnxruntime.OnnxJavaType.BOOL).use { maskTensor ->
                 text.run(mapOf("ids" to tokenTensor, "mask" to maskTensor)).use { result ->
+                    @Suppress("UNCHECKED_CAST")
                     val h = result.get("h").orElseThrow().value as Array<Array<FloatArray>>
                     val logd = result.get("logd").orElseThrow().value
                     val d = when (logd) {
-                        is Array<*> -> (logd[0] as FloatArray)
+                        is Array<*> -> when (val first = logd.firstOrNull()) {
+                            is FloatArray -> first
+                            is Array<*> -> first.firstOrNull() as? FloatArray
+                                ?: error("Unexpected logd [1,1,L] layout")
+                            else -> error("Unexpected logd tensor layout")
+                        }
                         else -> error("Unexpected logd tensor layout")
                     }
                     val planner = AntaliaFramePlanner.plan(ids, h[0].flatMap { it.asIterable() }.toFloatArray(), d, spaceId, speed)
