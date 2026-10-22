@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.net.URI
 
 plugins {
     alias(libs.plugins.android.application)
@@ -192,7 +193,7 @@ val syncAntaliaTextAssets = tasks.register("syncAntaliaTextAssets") {
             val file = out.resolve(name)
             if (!file.isFile || file.length() == 0L) {
                 val tmp = out.resolve(name + ".download")
-                java.net.URI(url).toURL().openConnection().apply {
+                URI(url).toURL().openConnection().apply {
                     connectTimeout = 30_000
                     readTimeout = 120_000
                 }.getInputStream().use { input -> tmp.outputStream().use { output -> input.copyTo(output) } }
