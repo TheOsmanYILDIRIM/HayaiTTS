@@ -5,6 +5,7 @@ import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaOnnxEngine
 import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaTextCodec
 import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaWebNormalizer
 import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaAudioPost
+import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaTextChunks
 import java.io.File
 import android.speech.tts.SynthesisCallback
 import android.speech.tts.SynthesisRequest
@@ -255,9 +256,7 @@ class HayaiTtsService : TextToSpeechService() {
                 }
             }
             val normalized = AntaliaWebNormalizer(applicationContext).normalize(raw)
-            val chunks = normalized.split(Regex("""(?<=[.!?])\s+"""))
-                .flatMap { sentence -> sentence.chunked(110) }
-                .filter { it.isNotBlank() }
+            val chunks = AntaliaTextChunks.split(normalized)
             val post = AntaliaAudioPost()
             AntaliaOnnxEngine(models).use { engine ->
                 for ((index, piece) in chunks.withIndex()) {
