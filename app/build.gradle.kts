@@ -187,17 +187,17 @@ val syncAntaliaTextAssets = tasks.register("syncAntaliaTextAssets") {
         val modelBase = "https://huggingface.co/fr0stb1rd/antalia-mini-web-onnx/resolve/main"
         val urls = mapOf("normalize.js" to source) +
             listOf("foreign_dict.json", "foreign_parts.json", "known_words.json", "english_i.json")
-                .associateWith { "$" + "{modelBase}/$" + "{it}" }
+                .associateWith { modelBase + "/" + it }
         for ((name, url) in urls) {
             val file = out.resolve(name)
             if (!file.isFile || file.length() == 0L) {
-                val tmp = out.resolve("$" + "{name}.download")
+                val tmp = out.resolve(name + ".download")
                 java.net.URI(url).toURL().openConnection().apply {
                     connectTimeout = 30_000
                     readTimeout = 120_000
-                }.getInputStream().use { input -> tmp.outputStream().use(input::copyTo) }
-                require(tmp.length() > 0L) { "Antalia asset empty: $" + "name" }
-                check(tmp.renameTo(file)) { "Cannot publish Antalia asset: $" + "name" }
+                }.getInputStream().use { input -> tmp.outputStream().use { output -> input.copyTo(output) } }
+                require(tmp.length() > 0L) { "Antalia asset empty: " + name }
+                check(tmp.renameTo(file)) { "Cannot publish Antalia asset: " + name }
             }
         }
     }
