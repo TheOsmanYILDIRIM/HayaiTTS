@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.net.URI
 
 plugins {
     alias(libs.plugins.android.application)
@@ -127,6 +128,11 @@ android {
     // Kotlin Gradle Plugin compilerOptions DSL at the top of the file.
 
     packaging {
+        jniLibs {
+            // Experimental only: sherpa-onnx AAR and ORT Android both bundle this SONAME.
+            // Compile unblocker; runtime ABI/version compatibility remains unverified.
+            pickFirsts += "**/libonnxruntime.so"
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -169,6 +175,39 @@ tasks.named("preBuild") {
     dependsOn(syncCatalogAssets)
 }
 
+// Experimental: pin the original ECMAScript normalizer rather than rewriting its
+// Unicode regexes. The four language dictionaries are downloaded from the
+// original published ONNX model. Do not silently continue on download failure.
+val syncAntaliaTextAssets = tasks.register("syncAntaliaTextAssets") {
+    val destination = layout.projectDirectory.dir("src/main/assets/antalia")
+    outputs.dir(destination)
+    doLast {
+        val out = destination.asFile
+        out.mkdirs()
+        val source = "https://raw.githubusercontent.com/fr0stb1rd/antalia-mini-web/459585b3bf67db5db5d9ec03d394d9b2c95412f2/normalize.js"
+        val modelBase = "https://huggingface.co/fr0stb1rd/antalia-mini-web-onnx/resolve/main"
+        val urls = mapOf("normalize.js" to source) +
+            listOf("foreign_dict.json", "foreign_parts.json", "known_words.json", "english_i.json", "text_stage.onnx", "sound_stage.onnx", "decoder.onnx")
+                .associateWith { modelBase + "/" + it }
+        for ((name, url) in urls) {
+            val file = out.resolve(name)
+            if (!file.isFile || file.length() == 0L) {
+                val tmp = out.resolve(name + ".download")
+                URI(url).toURL().openConnection().apply {
+                    connectTimeout = 30_000
+                    readTimeout = 120_000
+                }.getInputStream().use { input -> tmp.outputStream().use { output -> input.copyTo(output) } }
+                require(tmp.length() > 0L) { "Antalia asset empty: " + name }
+                check(tmp.renameTo(file)) { "Cannot publish Antalia asset: " + name }
+            }
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(syncAntaliaTextAssets)
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -202,6 +241,7 @@ dependencies {
     implementation(libs.datastore.preferences)
     implementation(libs.workmanager)
     implementation(libs.kermit)
+    implementation(libs.onnxruntime.android)
     implementation(libs.commons.compress)
     implementation(libs.kotlinx.serialization.json)
 
