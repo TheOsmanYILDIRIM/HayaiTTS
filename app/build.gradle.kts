@@ -186,7 +186,7 @@ val syncAntaliaTextAssets = tasks.register("syncAntaliaTextAssets") {
         val source = "https://raw.githubusercontent.com/fr0stb1rd/antalia-mini-web/459585b3bf67db5db5d9ec03d394d9b2c95412f2/normalize.js"
         val modelBase = "https://huggingface.co/fr0stb1rd/antalia-mini-web-onnx/resolve/main"
         val urls = mapOf("normalize.js" to source) +
-            listOf("foreign_dict.json", "foreign_parts.json", "known_words.json", "english_i.json")
+            listOf("foreign_dict.json", "foreign_parts.json", "known_words.json", "english_i.json", "text_stage.onnx", "sound_stage.onnx", "decoder.onnx")
                 .associateWith { modelBase + "/" + it }
         for ((name, url) in urls) {
             val file = out.resolve(name)
