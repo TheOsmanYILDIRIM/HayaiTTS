@@ -1,6 +1,11 @@
 package dev.ahmedmohamed.hayaitts.tts
 
 import android.media.AudioFormat
+import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaOnnxEngine
+import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaTextCodec
+import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaWebNormalizer
+import dev.ahmedmohamed.hayaitts.data.antalia.AntaliaAudioPost
+import java.io.File
 import android.speech.tts.SynthesisCallback
 import android.speech.tts.SynthesisRequest
 import android.speech.tts.TextToSpeech
@@ -34,6 +39,7 @@ class HayaiTtsService : TextToSpeechService() {
     @Volatile private var lastSelectedVoiceId: String = ""
 
     override fun onIsLanguageAvailable(lang: String?, country: String?, variant: String?): Int {
+        if (lang.equals("tr", true) || lang.equals("tur", true)) return TextToSpeech.LANG_AVAILABLE
         val voices = runtimeOrNull()?.listAvailableVoices().orEmpty()
         val requested = buildBcp47(lang, country, variant)
         return when {
@@ -60,7 +66,7 @@ class HayaiTtsService : TextToSpeechService() {
 
     override fun onGetVoices(): List<Voice> {
         val voices = runtimeOrNull()?.listAvailableVoices().orEmpty()
-        return voices.flatMap { voice ->
+        return (if (hasAntaliaAssets()) listOf(Voice(ANTALIA_ID, Locale.forLanguageTag("tr-TR"), Voice.QUALITY_NORMAL, Voice.LATENCY_HIGH, false, emptySet())) else emptyList()) + voices.flatMap { voice ->
             if (voice.speakers.size > 1) {
                 voice.speakers.map { speaker ->
                     val voiceName = "${voice.voiceId}#${speaker.id}#${speaker.name}"
@@ -81,10 +87,10 @@ class HayaiTtsService : TextToSpeechService() {
     }
 
     override fun onIsValidVoiceName(name: String?): Int =
-        if (resolveVoiceName(name) != null) TextToSpeech.SUCCESS else TextToSpeech.ERROR
+        if ((name == ANTALIA_ID && hasAntaliaAssets()) || resolveVoiceName(name) != null) TextToSpeech.SUCCESS else TextToSpeech.ERROR
 
     override fun onLoadVoice(name: String?): Int {
-        if (resolveVoiceName(name) == null) return TextToSpeech.ERROR
+        if (resolveVoiceName(name) == null && !(name == ANTALIA_ID && hasAntaliaAssets())) return TextToSpeech.ERROR
         lastSelectedVoiceId = name!!
         return TextToSpeech.SUCCESS
     }
@@ -125,6 +131,10 @@ class HayaiTtsService : TextToSpeechService() {
         stopRequested = false
 
         val rawText = request.charSequenceText?.toString().orEmpty()
+        if (request.voiceName == ANTALIA_ID || (request.voiceName.isNullOrBlank() && lastSelectedVoiceId == ANTALIA_ID)) {
+            synthesizeAntalia(rawText, callback)
+            return
+        }
         val text = if (rawText.length > MAX_TEXT_LENGTH) {
             rawText.substring(0, MAX_TEXT_LENGTH)
         } else rawText
@@ -224,6 +234,42 @@ class HayaiTtsService : TextToSpeechService() {
         callback.done()
     }
 
+    private fun hasAntaliaAssets(): Boolean = listOf(
+        "text_stage.onnx", "sound_stage.onnx", "decoder.onnx", "normalize.js",
+        "foreign_dict.json", "foreign_parts.json", "known_words.json", "english_i.json",
+    ).all { runCatching { assets.open("antalia/" + it).close() }.isSuccess }
+
+    private fun synthesizeAntalia(raw: String, callback: SynthesisCallback) {
+        if (!hasAntaliaAssets()) { callback.error(); return }
+        if (callback.start(48_000, AudioFormat.ENCODING_PCM_16BIT, 1) != TextToSpeech.SUCCESS) return
+        try {
+            // Model files are copied into private app storage for native ORT session loading.
+            val models = File(filesDir, "antalia")
+            models.mkdirs()
+            for (name in listOf("text_stage.onnx", "sound_stage.onnx", "decoder.onnx")) {
+                val file = File(models, name)
+                if (!file.isFile || file.length() == 0L) {
+                    assets.open("antalia/" + name).use { input ->
+                        file.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
+            }
+            val normalized = AntaliaWebNormalizer(applicationContext).normalize(raw)
+            val ids = AntaliaTextCodec.encode(normalized)
+            AntaliaOnnxEngine(models).use { engine ->
+                if (stopRequested) { callback.done(); return }
+                val audio = AntaliaAudioPost().process(
+                    engine.synthesizeTokenIds(ids, AntaliaTextCodec.spaceId)
+                )
+                if (!stopRequested) streamPcm(callback, audio)
+            }
+            callback.done()
+        } catch (t: Throwable) {
+            log.e(t) { "Antalia synthesis failed" }
+            callback.error()
+        }
+    }
+
     private fun runtimeOrNull(): SherpaTtsRuntime? = runCatching {
         SherpaTtsRuntime.get(applicationContext)
     }.getOrNull()
@@ -314,6 +360,7 @@ class HayaiTtsService : TextToSpeechService() {
     }
 
     private companion object {
+        const val ANTALIA_ID = "antalia-mini"
         const val BYTES_PER_SAMPLE = 2
         const val MAX_TEXT_LENGTH = 2000
     }
