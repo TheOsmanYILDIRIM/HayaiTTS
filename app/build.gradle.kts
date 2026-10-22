@@ -174,6 +174,39 @@ tasks.named("preBuild") {
     dependsOn(syncCatalogAssets)
 }
 
+// Experimental: pin the original ECMAScript normalizer rather than rewriting its
+// Unicode regexes. The four language dictionaries are downloaded from the
+// original published ONNX model. Do not silently continue on download failure.
+val syncAntaliaTextAssets = tasks.register("syncAntaliaTextAssets") {
+    val destination = layout.projectDirectory.dir("src/main/assets/antalia")
+    outputs.dir(destination)
+    doLast {
+        val out = destination.asFile
+        out.mkdirs()
+        val source = "https://raw.githubusercontent.com/fr0stb1rd/antalia-mini-web/459585b3bf67db5db5d9ec03d394d9b2c95412f2/normalize.js"
+        val modelBase = "https://huggingface.co/fr0stb1rd/antalia-mini-web-onnx/resolve/main"
+        val urls = mapOf("normalize.js" to source) +
+            listOf("foreign_dict.json", "foreign_parts.json", "known_words.json", "english_i.json")
+                .associateWith { "$" + "{modelBase}/$" + "{it}" }
+        for ((name, url) in urls) {
+            val file = out.resolve(name)
+            if (!file.isFile || file.length() == 0L) {
+                val tmp = out.resolve("$" + "{name}.download")
+                java.net.URI(url).toURL().openConnection().apply {
+                    connectTimeout = 30_000
+                    readTimeout = 120_000
+                }.getInputStream().use { input -> tmp.outputStream().use(input::copyTo) }
+                require(tmp.length() > 0L) { "Antalia asset empty: $" + "name" }
+                check(tmp.renameTo(file)) { "Cannot publish Antalia asset: $" + "name" }
+            }
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(syncAntaliaTextAssets)
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
