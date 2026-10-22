@@ -255,13 +255,20 @@ class HayaiTtsService : TextToSpeechService() {
                 }
             }
             val normalized = AntaliaWebNormalizer(applicationContext).normalize(raw)
-            val ids = AntaliaTextCodec.encode(normalized)
+            val chunks = normalized.split(Regex("(?<=[.!?])\\\\s+"))
+                .flatMap { sentence -> sentence.chunked(110) }
+                .filter { it.isNotBlank() }
+            val post = AntaliaAudioPost()
             AntaliaOnnxEngine(models).use { engine ->
-                if (stopRequested) { callback.done(); return }
-                val audio = AntaliaAudioPost().process(
-                    engine.synthesizeTokenIds(ids, AntaliaTextCodec.spaceId)
-                )
-                if (!stopRequested) streamPcm(callback, audio)
+                for ((index, piece) in chunks.withIndex()) {
+                    if (stopRequested) break
+                    val ids = AntaliaTextCodec.encode(piece)
+                    val rawAudio = engine.synthesizeTokenIds(
+                        ids, AntaliaTextCodec.spaceId, seed = index
+                    )
+                    val audio = post.process(post.appendPause(rawAudio, piece, index == chunks.lastIndex))
+                    if (!stopRequested) streamPcm(callback, audio)
+                }
             }
             callback.done()
         } catch (t: Throwable) {
