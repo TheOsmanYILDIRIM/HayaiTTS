@@ -255,7 +255,7 @@ class HayaiTtsService : TextToSpeechService() {
                 }
             }
             val normalized = AntaliaWebNormalizer(applicationContext).normalize(raw)
-            val chunks = normalized.split(Regex("(?<=[.!?])\\\\s+"))
+            val chunks = normalized.split(Regex("""(?<=[.!?])\s+"""))
                 .flatMap { sentence -> sentence.chunked(110) }
                 .filter { it.isNotBlank() }
             val post = AntaliaAudioPost()
